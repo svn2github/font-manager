@@ -27,15 +27,17 @@ import glib
 import gtk
 import logging
 import shutil
+import cPickle
+import shelve
+import subprocess
+import time
 
 from os.path import exists, join, realpath
 
-from constants import HOME, DESKTOP_DIR, TMP_DIR
+from constants import HOME, CACHE_DIR, DESKTOP_DIR, TMP_DIR
 from utils.common import finish_font_install, create_archive_from_folder
-try:
-    from sampler import BuildSample, Config
-except ImportError:
-    pass
+
+SAMPLER_CACHE   =   join(CACHE_DIR, 'sampler.cache')
 
 
 class Export(object):
@@ -56,18 +58,22 @@ class Export(object):
             import reportlab
             logging.info\
             ('Found ReportLab Toolkit Version %s' % reportlab.Version)
-            reportlab = True
+            self.reportlab = True
         except ImportError:
-            reportlab = False
-        self.objects['IncludeSampler'].set_sensitive(reportlab)
-        self.objects['ExportAsPDF'].set_sensitive(reportlab)
-        if not reportlab:
+            self.reportlab = False
+        self.objects['IncludeSampler'].set_sensitive(self.reportlab)
+        self.objects['ExportAsPDF'].set_sensitive(self.reportlab)
+        if not self.reportlab:
             tooltip = _('This feature requires the Report Lab Toolkit')
             self.objects['IncludeSampler'].set_tooltip_text(tooltip)
             self.objects['ExportAsPDF'].set_tooltip_text(tooltip)
         self.objects['ExportFileChooser'].connect('current-folder-changed',
                                                         self._on_dest_set)
         self.objects['ExportFileChooser'].set_current_folder(DESKTOP_DIR)
+        self.objects['ExportAsArchive'].connect('toggled',
+                                                    self._update_sensitivity)
+        self.objects['ExportAsPDF'].connect('toggled', self._update_sensitivity)
+        self.objects['ExportTo'].connect('toggled', self._update_sensitivity)
 
     def run(self):
         """
@@ -120,7 +126,7 @@ class Export(object):
         """
         self.workdir = join(TMP_DIR, self.current_collection)
         if exists(TMP_DIR):
-            finish_font_install()
+            os.unlink(TMP_DIR)
         if exists(self.workdir):
             shutil.rmtree(self.workdir, ignore_errors=True)
         os.mkdir(TMP_DIR)
@@ -219,15 +225,24 @@ class Export(object):
             inp = self.workdir
         if outp is None:
             outp = self.workdir
-        config = Config()
-        config.fontsize = self.fontsize
-        config.pangram = self.pangram
-        buildsample = BuildSample(self.objects, config, self.current_collection,
-                        inp, join(outp, '%s.pdf' % self.current_collection))
-        if not buildsample.basic():
-            return False
-        else:
-            return True
+        if exists(SAMPLER_CACHE):
+            os.unlink(SAMPLER_CACHE)
+        cache = shelve.open(SAMPLER_CACHE, protocol=cPickle.HIGHEST_PROTOCOL)
+        cache['collection'] = self.current_collection
+        cache['fontlist'] = inp
+        cache['outfile'] = join(outp, '%s.pdf' % self.current_collection)
+        cache.close()
+        font_sampler = join('@prefix@', 'bin/font-sampler')
+        sampler = subprocess.Popen([font_sampler])
+        # Wait for font-sampler to finish
+        while sampler.poll() is None:
+            # Prevent loop from hogging cpu
+            time.sleep(0.5)
+            # Avoid the main window becoming unresponsive
+            while gtk.events_pending():
+                gtk.main_iteration()
+            continue
+        return
 
     def _get_pfb_files(self, path):
         """
@@ -267,3 +282,10 @@ class Export(object):
             pass
         return
 
+    def _update_sensitivity(self, unused_widget):
+        if not self.objects['ExportAsArchive'].get_active():
+            self.objects['IncludeSampler'].set_sensitive(False)
+        else:
+            if self.reportlab:
+                self.objects['IncludeSampler'].set_sensitive(True)
+        return
