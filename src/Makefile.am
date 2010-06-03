@@ -19,13 +19,27 @@ constants.py: constants.py.in
 		< $< \
 		> $@
 
-all: constants.py fontutils
+font-manager: font-manager.in
+	@sed \
+		-e 's|@PREFIX[@]|$(prefix)|g' \
+		-e 's|@LIBDIR[@]|$(libdir)|g' \
+		< $< \
+		> $@
+
+font-sampler: font-sampler.in
+	@sed \
+		-e 's|@PREFIX[@]|$(prefix)|g' \
+		-e 's|@LIBDIR[@]|$(libdir)|g' \
+		< $< \
+		> $@
+
+all: constants.py fontutils font-manager font-sampler
 	@python -m compileall .
 	@python -O -m compileall .
 
 make-install-dirs:
 	@mkdir -p $(DESTDIR)$(prefix)/bin
-	@mkdir -p $(DESTDIR)$(prefix)/lib/font-manager
+	@mkdir -p $(DESTDIR)$(libdir)/font-manager
 	@mkdir -p $(DESTDIR)$(prefix)/share/applications
 	@mkdir -p $(DESTDIR)$(prefix)/share/font-manager
 	@mkdir -p $(DESTDIR)$(prefix)/share/font-manager/core
@@ -33,10 +47,10 @@ make-install-dirs:
 	@mkdir -p $(DESTDIR)$(prefix)/share/font-manager/ui
 	@mkdir -p $(DESTDIR)$(prefix)/share/font-manager/utils
 
-install: all make-install-dirs
+install: make-install-dirs
 	install -m 755 font-manager $(DESTDIR)$(prefix)/bin/
 	install -m 755 font-sampler $(DESTDIR)$(prefix)/bin/
-	install -m 644 *.so $(DESTDIR)$(prefix)/lib/font-manager/
+	install -m 644 *.so $(DESTDIR)$(libdir)/font-manager/
 	install -m 644 *.py{,c,o} $(DESTDIR)$(prefix)/share/font-manager/
 	install -m 644 core/*.py{,c,o} $(DESTDIR)$(prefix)/share/font-manager/core/
 	install -m 644 data/* $(DESTDIR)$(prefix)/share/font-manager/data/
@@ -46,7 +60,7 @@ install: all make-install-dirs
 
 uninstall:
 	@rm -fv $(DESTDIR)$(prefix)/bin/font-manager
-	@rm -rfv $(DESTDIR)$(prefix)/lib/font-manager
+	@rm -rfv $(DESTDIR)$(libdir)/font-manager
 	@rm -rfv $(DESTDIR)$(prefix)/share/font-manager
 	@rm -fv $(DESTDIR)$(prefix)/share/applications/font-manager.desktop
 
